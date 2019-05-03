@@ -17,6 +17,7 @@ dependencies:
   - bioconductor-edger=3.24.1
   - conda-forge::r-markdown=0.9
   - csvtk=0.17.0
+  - qualimap=2.2.2b
   - preseq=2.0.3
   - rseqc=3.0.0
   - samtools=1.9

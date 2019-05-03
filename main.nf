@@ -894,6 +894,7 @@ process markDuplicates {
 
 
 process qualimap {
+    label 'low_memory'
     tag "${bam.baseName}"
     publishDir "${params.outdir}/qualimap", mode: 'copy'
 
@@ -902,7 +903,7 @@ process qualimap {
 
     input:
     file bam from bam_qualimap
-    file gtf from gtf_qualimap
+    file gtf from gtf_qualimap.collect()
 
     output:
     file "${bam.baseName}" into qualimap_results
@@ -915,8 +916,10 @@ process qualimap {
         qualimap_direction = 'strand-specific-reverse'
     }
     def paired = params.singleEnd ? '' : '-pe'
+    memory = task.memory.toGiga() + "G"
     """
-    qualimap rnaseq $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
+    unset DISPLAY
+    qualimap --java-mem-size=${memory} rnaseq $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
     """
 }
 
@@ -1121,6 +1124,7 @@ process multiqc {
     file ('alignment/*') from alignment_logs.collect()
     file ('rseqc/*') from rseqc_results.collect().ifEmpty([])
     file ('rseqc/*') from genebody_coverage_results.collect().ifEmpty([])
+    file ('qualimap/*') from qualimap_results.collect().ifEmpty([])
     file ('preseq/*') from preseq_results.collect().ifEmpty([])
     file ('dupradar/*') from dupradar_results.collect().ifEmpty([])
     file ('featureCounts/*') from featureCounts_logs.collect()
@@ -1140,7 +1144,7 @@ process multiqc {
     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
     """
     multiqc . -f $rtitle $rfilename --config $multiqc_config \\
-        -m custom_content -m picard -m preseq -m rseqc -m featureCounts -m hisat2 -m star -m cutadapt -m fastqc
+        -m custom_content -m picard -m preseq -m rseqc -m featureCounts -m hisat2 -m star -m cutadapt -m fastqc -m qualimap
     """
 }
 
