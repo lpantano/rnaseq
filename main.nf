@@ -220,19 +220,19 @@ if(params.readPaths){
             .from(params.readPaths)
             .map { row -> [ row[0], [file(row[1][0])]] }
             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { raw_reads_fastqc; raw_reads_trimgalore }
+            .into { raw_reads_fastqc; raw_reads_trimgalore; raw_salmon }
     } else {
         Channel
             .from(params.readPaths)
             .map { row -> [ row[0], [file(row[1][0]), file(row[1][1])]] }
             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { raw_reads_fastqc; raw_reads_trimgalore }
+            .into { raw_reads_fastqc; raw_reads_trimgalore; raw_salmon }
     }
 } else {
     Channel
         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nNB: Path requires at least one * wildcard!\nIf this is single-end data, please specify --singleEnd on the command line." }
-        .into { raw_reads_fastqc; raw_reads_trimgalore }
+        .into { raw_reads_fastqc; raw_reads_trimgalore; raw_salmon }
 }
 
 
@@ -440,7 +440,7 @@ if(params.aligner == 'hisat2' && !params.hisat2_index && params.fasta){
 if(params.transcriptome){
   process index {
       tag "$transcriptome.simpleName"
-      publishDir path: { "${params.outdir}/salmon_index" },
+      publishDir path: { "${params.outdir}" },
                  mode: 'copy'
 
       input:
@@ -742,25 +742,30 @@ if(params.aligner == 'hisat2'){
     }
 }
 
+if (params.transcriptome){
 process quant {
     tag "$sample"
     publishDir "${params.outdir}/Salmon", mode: 'copy'
 
     input:
     file index from index_ch.collect()
-    set sample, file(reads) from read_ch
+    set sample, file(reads) from raw_salmon
 
     output:
     file(sample) into quant_ch
     
     script:
-    def paired = params.singleEnd ? '-r ${reads[0]}' : '-1 ${reads[0]} -2 ${reads[1]}'
-
-    """
-    salmon quant --validateMappings --threads $task.cpus --libType=A -i $index $paired -o $sample
-    """
+    if (params.singleEnd){
+        """
+        salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -r ${reads[0]} -o $sample
+        """
+    }else{
+        """
+        salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -1 ${reads[0]} -2 ${reads[1]} -o $sample
+        """
+    }
 }
-
+}
 
 /*
  * STEP 4 - RSeQC analysis

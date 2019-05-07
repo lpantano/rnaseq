@@ -11,6 +11,7 @@ dependencies:
   - star=2.6.1d # don't upgrade me - 2.7X indices incompatible with iGenomes.
   - hisat2=2.1.0
   - picard=2.20.0
+  - salmon=0.13.1
   - bioconductor-dupradar=1.12.1
   - conda-forge::r-data.table=1.12.2
   - conda-forge::r-gplots=3.0.1.1
