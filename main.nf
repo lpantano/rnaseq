@@ -36,6 +36,7 @@ def helpMessage() {
       --star_index                  Path to STAR index
       --hisat2_index                Path to HiSAT2 index
       --fasta                       Path to Fasta reference
+      --transcriptome               Path to Fasta transcriptome
       --gtf                         Path to GTF file
       --gff                         Path to GFF3 file
       --bed12                       Path to bed12 file
@@ -167,6 +168,11 @@ if( params.gtf ){
 } else {
     exit 1, "No GTF or GFF3 annotation specified!"
 }
+
+Channel
+    .fromPath(params.transcriptome)
+    .ifEmpty { exit 1, "Transcript fasta file is unreachable: ${params.transcriptome}"  }
+    .set { tx_fasta_ch  }
 
 if( params.bed12 ){
     bed12 = Channel
@@ -429,6 +435,25 @@ if(params.aligner == 'hisat2' && !params.hisat2_index && params.fasta){
         hisat2-build -p ${task.cpus} $ss $exon $fasta ${fasta.baseName}.hisat2_index
         """
     }
+}
+
+if(params.transcriptome){
+  process index {
+      tag "$transcriptome.simpleName"
+      publishDir path: { "${params.outdir}/salmon_index" },
+                 mode: 'copy'
+
+      input:
+      file transcriptome from tx_fasta_ch
+
+      output:
+      file 'salmon_index' into index_ch
+
+      script:
+      """
+      salmon index --threads $task.cpus -t $transcriptome -i salmon_index
+      """
+  }
 }
 /*
  * PREPROCESSING - Convert GFF3 to GTF
@@ -716,6 +741,26 @@ if(params.aligner == 'hisat2'){
         """
     }
 }
+
+process quant {
+    tag "$sample"
+    publishDir "${params.outdir}/Salmon", mode: 'copy'
+
+    input:
+    file index from index_ch.collect()
+    set sample, file(reads) from read_ch
+
+    output:
+    file(sample) into quant_ch
+    
+    script:
+    def paired = params.singleEnd ? '-r ${reads[0]}' : '-1 ${reads[0]} -2 ${reads[1]}'
+
+    """
+    salmon quant --validateMappings --threads $task.cpus --libType=A -i $index $paired -o $sample
+    """
+}
+
 
 /*
  * STEP 4 - RSeQC analysis
