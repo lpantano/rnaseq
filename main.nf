@@ -978,6 +978,38 @@ process qualimap {
 
 
 
+process qualimap {
+    label 'low_memory'
+    tag "${bam.baseName}"
+    publishDir "${params.outdir}/qualimap", mode: 'copy'
+
+    when:
+    !params.skip_qc && !params.skip_qualimap
+
+    input:
+    file bam from bam_qualimap
+    file gtf from gtf_qualimap.collect()
+
+    output:
+    file "${bam.baseName}" into qualimap_results
+
+    script:
+    def qualimap_direction = 'non-strand-specific'
+    if (forward_stranded){
+        qualimap_direction = 'strand-specific-forward'
+    }else if (reverse_stranded){
+        qualimap_direction = 'strand-specific-reverse'
+    }
+    def paired = params.singleEnd ? '' : '-pe'
+    memory = task.memory.toGiga() + "G"
+    """
+    unset DISPLAY
+    qualimap --java-mem-size=${memory} rnaseq $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
+    """
+}
+
+
+
 /*
  * STEP 8 - dupRadar
  */
