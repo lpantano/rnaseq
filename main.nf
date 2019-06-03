@@ -43,6 +43,10 @@ def helpMessage() {
       --saveReference               Save the generated reference files the the Results directory.
       --saveTrimmed                 Save trimmed FastQ file intermediates
       --saveAlignedIntermediates    Save the BAM files from the Aligment step  - not done by default
+      --organism
+      --source
+      --release
+      --genome_name
 
     Trimming options
       --clip_r1 [int]               Instructs Trim Galore to remove bp from the 5' end of read 1 (or single-end reads)
@@ -51,12 +55,15 @@ def helpMessage() {
       --three_prime_clip_r2 [int]   Instructs Trim Galore to re move bp from the 3' end of read 2 AFTER adapter/quality trimming has been performed
 
     Presets:
-      --pico                        Sets trimming and standedness settings for the SMARTer Stranded Total RNA-Seq Kit - Pico Input kit. Equivalent to: --forward_stranded --clip_r1 3 --three_prime_clip_r2 3
+      --pico                        Sets trimming and strandedness settings for the SMARTer Stranded Total RNA-Seq Kit - Pico Input kit. Equivalent to: --forward_stranded --clip_r1 3 --three_prime_clip_r2 3
       --fcExtraAttributes           Define which extra parameters should also be included in featureCounts (default: gene_names)
       --fcGroupFeatures             Define the attribute type used to group features. (default: 'gene_name')
       --fcGroupFeaturesType         Define the type attribute used to group features based on the group attribute (default: 'gene_biotype')
 
     Other options:
+      --coldata
+      --aligner
+      --skipTXImeta
       --outdir                      The output directory where the results will be saved
       -w/--work-dir                 The temporary directory where intermediate data will be saved
       --email                       Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits
@@ -105,8 +112,12 @@ params.gtf = params.genome ? params.genomes[ params.genome ].gtf ?: false : fals
 params.gff = params.genome ? params.genomes[ params.genome ].gff ?: false : false
 params.bed12 = params.genome ? params.genomes[ params.genome ].bed12 ?: false : false
 params.hisat2_index = params.genome ? params.genomes[ params.genome ].hisat2 ?: false : false
-
-
+params.source = params.genome ? params.genomes[ params.genome ].source ?: false : false
+params.release = params.genome ? params.genomes[ params.genome ].release ?: false : false
+params.organism = params.genome ? params.genomes[ params.genome ].organism ?: false : false
+params.genome_name = params.genome ? params.genomes[ params.genome ].genome_name ?: false : false
+params.transcriptome = params.genome ? params.genomes[ params.genome ].transcriptome ?: false : false
+               
 ch_mdsplot_header = Channel.fromPath("$baseDir/assets/mdsplot_header.txt")
 ch_heatmap_header = Channel.fromPath("$baseDir/assets/heatmap_header.txt")
 ch_biotypes_header = Channel.fromPath("$baseDir/assets/biotypes_header.txt")
@@ -156,12 +167,19 @@ else {
     exit 1, "No reference genome specified!"
 }
 
+if( params.coldata ){
+  Channel
+      .fromPath(params.coldata)
+      .ifEmpty { exit 1, "Coldata annotation file not found: ${params.coldata}" }
+      .into { coldata_ch; }
+}
+
 if( params.gtf ){
     Channel
         .fromPath(params.gtf)
         .ifEmpty { exit 1, "GTF annotation file not found: ${params.gtf}" }
         .into { gtf_makeSTARindex; gtf_makeHisatSplicesites; gtf_makeHISATindex; gtf_makeBED12;
-              gtf_star; gtf_dupradar; gtf_qualimap;  gtf_featureCounts; gtf_stringtieFPKM }
+              gtf_star; gtf_dupradar; gtf_qualimap;  gtf_featureCounts; gtf_stringtieFPKM; gtf_tximeta }
 } else if( params.gff ){
   gffFile = Channel.fromPath(params.gff)
                    .ifEmpty { exit 1, "GFF annotation file not found: ${params.gff}" }
@@ -172,7 +190,7 @@ if( params.gtf ){
 Channel
     .fromPath(params.transcriptome)
     .ifEmpty { exit 1, "Transcript fasta file is unreachable: ${params.transcriptome}"  }
-    .set { tx_fasta_ch  }
+    .into { tx_fasta_ch; tx_fasta_tximeta_ch  }
 
 if( params.bed12 ){
     bed12 = Channel
@@ -448,7 +466,7 @@ if(params.transcriptome){
       file transcriptome from tx_fasta_ch
 
       output:
-      file 'salmon_index' into index_ch
+      file 'salmon_index' into index_ch, index_tximeta_ch
 
       script:
       """
@@ -744,28 +762,52 @@ if(params.aligner == 'hisat2'){
 }
 
 if (params.transcriptome){
-process quant {
-    tag "$sample"
-    publishDir "${params.outdir}/Salmon", mode: 'copy'
+  process quant {
+      tag "$sample"
+      label "low_memory"
+      publishDir "${params.outdir}/Salmon", mode: 'copy'
 
-    input:
-    file index from index_ch.collect()
-    set sample, file(reads) from raw_salmon
+      input:
+      file index from index_ch.collect()
+      set sample, file(reads) from raw_salmon
 
-    output:
-    file(sample) into quant_ch
-    
-    script:
-    if (params.singleEnd){
-        """
-        salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -r ${reads[0]} -o $sample
-        """
-    }else{
-        """
-        salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -1 ${reads[0]} -2 ${reads[1]} -o $sample
-        """
-    }
+      output:
+      file(sample) into quant_ch
+      
+      script:
+      if (params.singleEnd){
+          """
+          salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -r ${reads[0]} -o $sample
+          """
+      }else{
+          """
+          salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -1 ${reads[0]} -2 ${reads[1]} -o $sample
+          """
+      }
+  }
 }
+if (params.transcriptome && params.coldata && params.release && params.source && params.organism && params.genome_name && !params.skipTXImeta){
+
+  process export_to_r {
+      tag "$sample"
+      publishDir "${params.outdir}/tximeta", mode: 'copy'
+
+      input:
+      file index from index_tximeta_ch.collect()
+      file coldata from coldata_ch
+      file transcriptome from tx_fasta_tximeta_ch
+      file gtf from gtf_tximeta
+      file all_quant from quant_ch.collect()
+      file quant from Channel.fromPath("${params.outdir}/Salmon")
+
+      output:
+      file "*.rds" into tximeta_ch
+      
+      script:
+      """
+      tximeta.r $coldata $quant $index '${params.source}' '${params.organism}' ${params.release} ${params.genome_name} $transcriptome $gtf
+      """
+  }
 }
 
 /*
@@ -975,39 +1017,6 @@ process qualimap {
     qualimap --java-mem-size=${memory} rnaseq $qualimap_direction $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
     """
 }
-
-
-
-process qualimap {
-    label 'low_memory'
-    tag "${bam.baseName}"
-    publishDir "${params.outdir}/qualimap", mode: 'copy'
-
-    when:
-    !params.skip_qc && !params.skip_qualimap
-
-    input:
-    file bam from bam_qualimap
-    file gtf from gtf_qualimap.collect()
-
-    output:
-    file "${bam.baseName}" into qualimap_results
-
-    script:
-    def qualimap_direction = 'non-strand-specific'
-    if (forward_stranded){
-        qualimap_direction = 'strand-specific-forward'
-    }else if (reverse_stranded){
-        qualimap_direction = 'strand-specific-reverse'
-    }
-    def paired = params.singleEnd ? '' : '-pe'
-    memory = task.memory.toGiga() + "G"
-    """
-    unset DISPLAY
-    qualimap --java-mem-size=${memory} rnaseq $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
-    """
-}
-
 
 
 /*
@@ -1229,7 +1238,7 @@ process multiqc {
     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
     """
     multiqc . -f $rtitle $rfilename --config $multiqc_config \\
-        -m custom_content -m picard -m preseq -m rseqc -m featureCounts -m hisat2 -m star -m cutadapt -m fastqc -m qualimap
+        -m custom_content -m picard -m preseq -m rseqc -m featureCounts -m hisat2 -m star -m cutadapt  -m qualimap -m fastqc
     """
 }
 

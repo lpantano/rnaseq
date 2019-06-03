@@ -16,6 +16,7 @@ dependencies:
   - conda-forge::r-data.table=1.12.2
   - conda-forge::r-gplots=3.0.1.1
   - bioconductor-edger=3.24.3
+  - bioconductor-tximeta
   - conda-forge::r-markdown=0.9
   - csvtk=0.17.0
   - qualimap=2.2.2b
