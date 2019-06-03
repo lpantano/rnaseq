@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 
 args = commandArgs(trailingOnly=TRUE)
-if (length(args) < 9) {
-  stop("Usage: tximeta.r <salmon_out> <index> <source> <organism> <release> <genome> <fasta> <gtf>", call.=FALSE)
+if (length(args) < 6) {
+  stop("Usage: tximeta.r <coldata> <salmon_out> <index> <tximeta> <fasta> <gtf>", call.=FALSE)
 }
 
 path = args[2]
@@ -15,10 +15,23 @@ coldata = cbind(files = fns, coldata)
 
 library(tximeta)
 setTximetaBFC(".")
-formatted_gtf = paste0(args[5], ".", args[7], ".", args[6], ".gtf")
-file.symlink(args[9], formatted_gtf)
-makeLinkedTxome(indexDir=args[3], source=args[4], organism=args[5], release=args[6], genome=args[7], fasta=args[8], gtf=formatted_gtf, write=FALSE)
+annotation = strsplit(args[4], "\\.")[[1]]
+message("tximeta annotation parameters", annotation)
 
+if (length(annotation) !=4 )
+  stop("tximeta parameter is malformed, expected: source.organism.version.release, but got: ", args[4])
+
+source = annotation[1]
+if (!source %in% c("Ensembl", "Encode"))
+  stop("First element of annotation should be Ensembl or Enconde")
+
+organism = annotation[2]
+genome = annotation[3]
+release = annotation[4]
+
+formatted_gtf = paste0(organism, ".", genome, ".", release, ".gtf")
+file.symlink(args[6], formatted_gtf)
+makeLinkedTxome(indexDir=args[3], source=source, organism=organism, release=release, genome=genome, fasta=args[5], gtf=formatted_gtf, write=FALSE)
 
 se <- tximeta(coldata)
 gse <- summarizeToGene(se)

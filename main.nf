@@ -43,10 +43,7 @@ def helpMessage() {
       --saveReference               Save the generated reference files the the Results directory.
       --saveTrimmed                 Save trimmed FastQ file intermediates
       --saveAlignedIntermediates    Save the BAM files from the Aligment step  - not done by default
-      --organism
-      --source
-      --release
-      --genome_name
+      --tximeta                     Annotation name to be use with tximeta package: source.organism.genome.release like Ensembl.Hsapiens.hg38.96
 
     Trimming options
       --clip_r1 [int]               Instructs Trim Galore to remove bp from the 5' end of read 1 (or single-end reads)
@@ -61,9 +58,9 @@ def helpMessage() {
       --fcGroupFeaturesType         Define the type attribute used to group features based on the group attribute (default: 'gene_biotype')
 
     Other options:
-      --coldata
-      --aligner
-      --skipTXImeta
+      --coldata                     metadata information for each sample
+      --aligner                     hisat2 or star
+      --skipTXImeta                 Skip tximeta analysis
       --outdir                      The output directory where the results will be saved
       -w/--work-dir                 The temporary directory where intermediate data will be saved
       --email                       Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits
@@ -112,11 +109,8 @@ params.gtf = params.genome ? params.genomes[ params.genome ].gtf ?: false : fals
 params.gff = params.genome ? params.genomes[ params.genome ].gff ?: false : false
 params.bed12 = params.genome ? params.genomes[ params.genome ].bed12 ?: false : false
 params.hisat2_index = params.genome ? params.genomes[ params.genome ].hisat2 ?: false : false
-params.source = params.genome ? params.genomes[ params.genome ].source ?: false : false
-params.release = params.genome ? params.genomes[ params.genome ].release ?: false : false
-params.organism = params.genome ? params.genomes[ params.genome ].organism ?: false : false
-params.genome_name = params.genome ? params.genomes[ params.genome ].genome_name ?: false : false
-params.transcriptome = params.genome ? params.genomes[ params.genome ].transcriptome ?: false : false
+params.tximeta = params.genome && !params.tximeta ? params.genomes[ params.genome ].tximeta ?: false : false
+params.transcriptome = params.genome && !params.transcriptome ? params.genomes[ params.genome ].transcriptome ?: false : false
                
 ch_mdsplot_header = Channel.fromPath("$baseDir/assets/mdsplot_header.txt")
 ch_heatmap_header = Channel.fromPath("$baseDir/assets/heatmap_header.txt")
@@ -786,7 +780,7 @@ if (params.transcriptome){
       }
   }
 }
-if (params.transcriptome && params.coldata && params.release && params.source && params.organism && params.genome_name && !params.skipTXImeta){
+if (params.transcriptome && params.coldata && params.tximeta && !params.skipTXImeta){
 
   process export_to_r {
       tag "$sample"
@@ -805,7 +799,7 @@ if (params.transcriptome && params.coldata && params.release && params.source &&
       
       script:
       """
-      tximeta.r $coldata $quant $index '${params.source}' '${params.organism}' ${params.release} ${params.genome_name} $transcriptome $gtf
+      tximeta.r $coldata $quant $index '${params.tximeta}' $transcriptome $gtf
       """
   }
 }
