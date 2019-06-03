@@ -36,12 +36,14 @@ def helpMessage() {
       --star_index                  Path to STAR index
       --hisat2_index                Path to HiSAT2 index
       --fasta                       Path to Fasta reference
+      --transcriptome               Path to Fasta transcriptome
       --gtf                         Path to GTF file
       --gff                         Path to GFF3 file
       --bed12                       Path to bed12 file
       --saveReference               Save the generated reference files the the Results directory.
       --saveTrimmed                 Save trimmed FastQ file intermediates
       --saveAlignedIntermediates    Save the BAM files from the Aligment step  - not done by default
+      --tximeta                     Annotation name to be use with tximeta package: source.organism.genome.release like Ensembl.Hsapiens.hg38.96
 
     Trimming options
       --clip_r1 [int]               Instructs Trim Galore to remove bp from the 5' end of read 1 (or single-end reads)
@@ -50,12 +52,15 @@ def helpMessage() {
       --three_prime_clip_r2 [int]   Instructs Trim Galore to re move bp from the 3' end of read 2 AFTER adapter/quality trimming has been performed
 
     Presets:
-      --pico                        Sets trimming and standedness settings for the SMARTer Stranded Total RNA-Seq Kit - Pico Input kit. Equivalent to: --forward_stranded --clip_r1 3 --three_prime_clip_r2 3
+      --pico                        Sets trimming and strandedness settings for the SMARTer Stranded Total RNA-Seq Kit - Pico Input kit. Equivalent to: --forward_stranded --clip_r1 3 --three_prime_clip_r2 3
       --fcExtraAttributes           Define which extra parameters should also be included in featureCounts (default: gene_names)
       --fcGroupFeatures             Define the attribute type used to group features. (default: 'gene_name')
       --fcGroupFeaturesType         Define the type attribute used to group features based on the group attribute (default: 'gene_biotype')
 
     Other options:
+      --coldata                     metadata information for each sample
+      --aligner                     hisat2 or star
+      --skipTXImeta                 Skip tximeta analysis
       --outdir                      The output directory where the results will be saved
       -w/--work-dir                 The temporary directory where intermediate data will be saved
       --email                       Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits
@@ -104,8 +109,9 @@ params.gtf = params.genome ? params.genomes[ params.genome ].gtf ?: false : fals
 params.gff = params.genome ? params.genomes[ params.genome ].gff ?: false : false
 params.bed12 = params.genome ? params.genomes[ params.genome ].bed12 ?: false : false
 params.hisat2_index = params.genome ? params.genomes[ params.genome ].hisat2 ?: false : false
-
-
+params.tximeta = params.genome && !params.tximeta ? params.genomes[ params.genome ].tximeta ?: false : false
+params.transcriptome = params.genome && !params.transcriptome ? params.genomes[ params.genome ].transcriptome ?: false : false
+               
 ch_mdsplot_header = Channel.fromPath("$baseDir/assets/mdsplot_header.txt")
 ch_heatmap_header = Channel.fromPath("$baseDir/assets/heatmap_header.txt")
 ch_biotypes_header = Channel.fromPath("$baseDir/assets/biotypes_header.txt")
@@ -155,18 +161,30 @@ else {
     exit 1, "No reference genome specified!"
 }
 
+if( params.coldata ){
+  Channel
+      .fromPath(params.coldata)
+      .ifEmpty { exit 1, "Coldata annotation file not found: ${params.coldata}" }
+      .into { coldata_ch; }
+}
+
 if( params.gtf ){
     Channel
         .fromPath(params.gtf)
         .ifEmpty { exit 1, "GTF annotation file not found: ${params.gtf}" }
         .into { gtf_makeSTARindex; gtf_makeHisatSplicesites; gtf_makeHISATindex; gtf_makeBED12;
-              gtf_star; gtf_dupradar; gtf_featureCounts; gtf_stringtieFPKM; gtf_qualimap}
+              gtf_star; gtf_dupradar; gtf_qualimap;  gtf_featureCounts; gtf_stringtieFPKM; gtf_tximeta }
 } else if( params.gff ){
   gffFile = Channel.fromPath(params.gff)
                    .ifEmpty { exit 1, "GFF annotation file not found: ${params.gff}" }
 } else {
     exit 1, "No GTF or GFF3 annotation specified!"
 }
+
+Channel
+    .fromPath(params.transcriptome)
+    .ifEmpty { exit 1, "Transcript fasta file is unreachable: ${params.transcriptome}"  }
+    .into { tx_fasta_ch; tx_fasta_tximeta_ch  }
 
 if( params.bed12 ){
     bed12 = Channel
@@ -214,19 +232,19 @@ if(params.readPaths){
             .from(params.readPaths)
             .map { row -> [ row[0], [file(row[1][0])]] }
             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { raw_reads_fastqc; raw_reads_trimgalore }
+            .into { raw_reads_fastqc; raw_reads_trimgalore; raw_salmon }
     } else {
         Channel
             .from(params.readPaths)
             .map { row -> [ row[0], [file(row[1][0]), file(row[1][1])]] }
             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { raw_reads_fastqc; raw_reads_trimgalore }
+            .into { raw_reads_fastqc; raw_reads_trimgalore; raw_salmon }
     }
 } else {
     Channel
         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nNB: Path requires at least one * wildcard!\nIf this is single-end data, please specify --singleEnd on the command line." }
-        .into { raw_reads_fastqc; raw_reads_trimgalore }
+        .into { raw_reads_fastqc; raw_reads_trimgalore; raw_salmon }
 }
 
 
@@ -302,9 +320,15 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
  * Parse software version numbers
  */
 process get_software_versions {
+    publishDir "${params.outdir}/pipeline_info", mode: 'copy',
+        saveAs: {filename ->
+            if (filename.indexOf(".csv") > 0) filename
+            else null
+        }
 
     output:
     file 'software_versions_mqc.yaml' into software_versions_yaml
+    file "software_versions.csv"
 
     script:
     """
@@ -323,6 +347,9 @@ process get_software_versions {
     picard MarkDuplicates --version &> v_markduplicates.txt  || true
     samtools --version &> v_samtools.txt
     multiqc --version &> v_multiqc.txt
+    Rscript -e "library(edgeR); write(x=as.character(packageVersion('edgeR')), file='v_edgeR.txt')"
+    Rscript -e "library(dupRadar); write(x=as.character(packageVersion('dupRadar')), file='v_dupRadar.txt')"
+    unset DISPLAY && qualimap rnaseq  > v_qualimap.txt 2>&1 || true
     scrape_software_versions.py &> software_versions_mqc.yaml
     """
 }
@@ -421,6 +448,25 @@ if(params.aligner == 'hisat2' && !params.hisat2_index && params.fasta){
         hisat2-build -p ${task.cpus} $ss $exon $fasta ${fasta.baseName}.hisat2_index
         """
     }
+}
+
+if(params.transcriptome){
+  process index {
+      tag "$transcriptome.simpleName"
+      publishDir path: { "${params.outdir}" },
+                 mode: 'copy'
+
+      input:
+      file transcriptome from tx_fasta_ch
+
+      output:
+      file 'salmon_index' into index_ch, index_tximeta_ch
+
+      script:
+      """
+      salmon index --threads $task.cpus -t $transcriptome -i salmon_index
+      """
+  }
 }
 /*
  * PREPROCESSING - Convert GFF3 to GTF
@@ -692,7 +738,7 @@ if(params.aligner == 'hisat2'){
         file wherearemyfiles from ch_where_hisat2_sort.collect()
 
         output:
-        file "${hisat2_bam.baseName}.sorted.bam" into bam_count, bam_rseqc, bam_preseq, bam_markduplicates, bam_qualimap, bam_featurecounts, bam_stringtieFPKM, bam_forSubsamp, bam_skipSubsamp
+        file "${hisat2_bam.baseName}.sorted.bam" into bam_count, bam_rseqc, bam_qualimap, bam_preseq, bam_markduplicates, bam_featurecounts, bam_stringtieFPKM,bam_forSubsamp, bam_skipSubsamp
         file "${hisat2_bam.baseName}.sorted.bam.bai" into bam_index_rseqc, bam_index_genebody
         file "where_are_my_files.txt"
 
@@ -707,6 +753,55 @@ if(params.aligner == 'hisat2'){
         samtools index ${hisat2_bam.baseName}.sorted.bam
         """
     }
+}
+
+if (params.transcriptome){
+  process quant {
+      tag "$sample"
+      label "low_memory"
+      publishDir "${params.outdir}/Salmon", mode: 'copy'
+
+      input:
+      file index from index_ch.collect()
+      set sample, file(reads) from raw_salmon
+
+      output:
+      file(sample) into quant_ch
+      
+      script:
+      if (params.singleEnd){
+          """
+          salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -r ${reads[0]} -o $sample
+          """
+      }else{
+          """
+          salmon quant --validateMappings --threads $task.cpus --libType=A -i $index -1 ${reads[0]} -2 ${reads[1]} -o $sample
+          """
+      }
+  }
+}
+if (params.transcriptome && params.coldata && params.tximeta && !params.skipTXImeta){
+
+  process export_to_r {
+      tag "$sample"
+      publishDir "${params.outdir}/tximeta", mode: 'copy'
+
+      input:
+      file index from index_tximeta_ch.collect()
+      file coldata from coldata_ch
+      file transcriptome from tx_fasta_tximeta_ch
+      file gtf from gtf_tximeta
+      file all_quant from quant_ch.collect()
+      file quant from Channel.fromPath("${params.outdir}/Salmon")
+
+      output:
+      file "*.rds" into tximeta_ch
+      
+      script:
+      """
+      tximeta.r $coldata $quant $index '${params.tximeta}' $transcriptome $gtf
+      """
+  }
 }
 
 /*
@@ -850,7 +945,7 @@ process preseq {
 
 
 /*
- * STEP 6 Mark duplicates
+ * STEP 6 - Mark duplicates
  */
 process markDuplicates {
     tag "${bam.baseName - '.sorted'}"
@@ -888,6 +983,7 @@ process markDuplicates {
  * STEP 7 QUALIMAP
  */
 process qualimap {
+    label 'low_memory'
     tag "${bam.baseName}"
     publishDir "${params.outdir}/qualimap", mode: 'copy'
 
@@ -896,7 +992,7 @@ process qualimap {
 
     input:
     file bam from bam_qualimap
-    file gtf from gtf_qualimap
+    file gtf from gtf_qualimap.collect()
 
     output:
     file "${bam.baseName}" into qualimap_results
@@ -909,16 +1005,16 @@ process qualimap {
         qualimap_direction = 'strand-specific-reverse'
     }
     def paired = params.singleEnd ? '' : '-pe'
+    memory = task.memory.toGiga() + "G"
     """
-    qualimap rnaseq $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
+    unset DISPLAY
+    qualimap --java-mem-size=${memory} rnaseq $qualimap_direction $paired -s -bam $bam -gtf $gtf -outdir ${bam.baseName}
     """
 }
 
 
-
-
 /*
- * STEP 7 - dupRadar
+ * STEP 8 - dupRadar
  */
 process dupradar {
     label 'low_memory'
@@ -959,7 +1055,7 @@ process dupradar {
 
 
 /*
- * STEP 8 Feature counts
+ * STEP 9 - Feature counts
  */
 process featureCounts {
     label 'low_memory'
@@ -1001,7 +1097,7 @@ process featureCounts {
 }
 
 /*
- * STEP 9 - Merge featurecounts
+ * STEP 10 - Merge featurecounts
  */
 process merge_featureCounts {
     tag "${input_files[0].baseName - '.sorted'}"
@@ -1024,7 +1120,7 @@ process merge_featureCounts {
 
 
 /*
- * STEP 10 - stringtie FPKM
+ * STEP 11 - stringtie FPKM
  */
 process stringtieFPKM {
     tag "${bam_stringtieFPKM.baseName - '.sorted'}"
@@ -1068,7 +1164,7 @@ process stringtieFPKM {
 }
 
 /*
- * STEP 11 - edgeR MDS and heatmap
+ * STEP 12 - edgeR MDS and heatmap
  */
 process sample_correlation {
     label 'low_memory'
@@ -1101,7 +1197,7 @@ process sample_correlation {
 }
 
 /*
- * STEP 13 MultiQC
+ * STEP 13 - MultiQC
  */
 process multiqc {
     publishDir "${params.outdir}/MultiQC", mode: 'copy'
@@ -1110,7 +1206,7 @@ process multiqc {
     !params.skip_multiqc
 
     input:
-    file multiqc_config from ch_multiqc_config
+    file multiqc_config from ch_multiqc_config.collect()
     file (fastqc:'fastqc/*') from fastqc_results.collect().ifEmpty([])
     file ('trimgalore/*') from trimgalore_results.collect()
     file ('alignment/*') from alignment_logs.collect()
@@ -1123,12 +1219,13 @@ process multiqc {
     file ('featureCounts_biotype/*') from featureCounts_biotype.collect()
     file ('stringtie/stringtie_log*') from stringtie_log.collect()
     file ('sample_correlation_results/*') from sample_correlation_results.collect().ifEmpty([]) // If the Edge-R is not run create an Empty array
-    file ('software_versions/*') from software_versions_yaml
+    file ('software_versions/*') from software_versions_yaml.collect()
     file workflow_summary from create_workflow_summary(summary)
 
     output:
     file "*multiqc_report.html" into multiqc_report
     file "*_data"
+    file "multiqc_plots"
 
     script:
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
@@ -1140,7 +1237,7 @@ process multiqc {
 }
 
 /*
- * STEP 13 - Output Description HTML
+ * STEP 14 - Output Description HTML
  */
 process output_documentation {
     publishDir "${params.outdir}/pipeline_info", mode: 'copy'
