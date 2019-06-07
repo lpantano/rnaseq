@@ -783,7 +783,7 @@ if (params.transcriptome){
       }
   }
 }
-if (params.transcriptome && !params.skipTXImeta){
+if (params.transcriptome){
 
   process export_to_r {
       tag "$sample"
