@@ -165,7 +165,9 @@ if( params.coldata ){
   Channel
       .fromPath(params.coldata)
       .ifEmpty { exit 1, "Coldata annotation file not found: ${params.coldata}" }
-      .into { coldata_ch; }
+      .set { coldata_ch; }
+}else{
+  coldata = Channel.value()
 }
 
 if( params.gtf ){
@@ -270,6 +272,7 @@ if(params.aligner == 'star'){
     if(params.splicesites)         summary['Splice Sites'] = params.splicesites
 }
 if(params.gtf)                 summary['GTF Annotation']  = params.gtf
+if(params.transcriptome)                 summary['transcriptome']  = params.transcriptome
 if(params.gff)                 summary['GFF3 Annotation']  = params.gff
 if(params.bed12)               summary['BED Annotation']  = params.bed12
 summary['Save prefs']     = "Ref Genome: "+(params.saveReference ? 'Yes' : 'No')+" / Trimmed FastQ: "+(params.saveTrimmed ? 'Yes' : 'No')+" / Alignment intermediates: "+(params.saveAlignedIntermediates ? 'Yes' : 'No')
@@ -780,26 +783,33 @@ if (params.transcriptome){
       }
   }
 }
-if (params.transcriptome && params.coldata && params.tximeta && !params.skipTXImeta){
+if (params.transcriptome){
 
-  process export_to_r {
+  process merge_salmon {
       tag "$sample"
-      publishDir "${params.outdir}/tximeta", mode: 'copy'
+      publishDir "${params.outdir}/Salmon", mode: 'copy'
 
       input:
       file index from index_tximeta_ch.collect()
-      file coldata from coldata_ch
       file transcriptome from tx_fasta_tximeta_ch
+      file coldata from coldata_ch
       file gtf from gtf_tximeta
       file all_quant from quant_ch.collect()
       file quant from Channel.fromPath("${params.outdir}/Salmon")
 
       output:
-      file "*.rds" into tximeta_ch
+      file "*se.rds" into tximeta_ch
+      file "*.csv" into salmon_counts_ch
       
       script:
+      if (params.tximeta) {
+        tximeta = params.tximeta
+      } else{
+        tximeta = "NULL"
+      }
       """
-      tximeta.r $coldata $quant $index '${params.tximeta}' $transcriptome $gtf
+      parse_gtf.py --gtf $gtf --fasta $transcriptome --id ${params.fcGroupFeatures} --extra ${params.fcExtraAttributes} -o tx2gene.csv
+      tximeta.r $coldata $quant $index '${tximeta}' $transcriptome $gtf
       """
   }
 }
