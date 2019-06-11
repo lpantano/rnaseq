@@ -28,3 +28,5 @@ dependencies:
   - gffread=0.9.12
   - deeptools=3.2.1
   - multiqc=1.7
+  - matplotlib=3.0.3
+  - r-base=3.5.1
