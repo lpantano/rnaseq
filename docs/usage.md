@@ -17,6 +17,7 @@
 * [FeatureCounts Extra Gene Names](#featurecounts-extra-gene-names)
   * [Default Attribute Type](#default-attribute-type)
   * [Extra Gene Names](#extra-gene-names)
+* [Transcriptome mapping with Salmon](#transcriptome-mapping-with-salmon)
 * [Alignment tool](#alignment-tool)
 * [Reference genomes](#reference-genomes)
   * [`--genome` (using iGenomes)](#--genome-using-igenomes)
@@ -29,6 +30,7 @@
   * [`--clip_r2 [int]`](#--clip_r2-int)
   * [`--three_prime_clip_r1 [int]`](#--three_prime_clip_r1-int)
   * [`--three_prime_clip_r2 [int]`](#--three_prime_clip_r2-int)
+  * [`--trim_nextseq [int]`](#--trim_nextseq)
 * [Library Prep Presets](#library-prep-presets)
   * [`--pico`](#--pico)
 * [Skipping QC steps](#skipping-qc-steps)
@@ -49,8 +51,8 @@
   * [`--max_memory`](#--max_memory)
   * [`--max_time`](#--max_time)
   * [`--max_cpus`](#--max_cpus)
-  * [`--hisatBuildMemory`](#--hisatbuildmemory)
-  * [`--subsampFilesizeThreshold`](#--subsampfilesizethreshold)
+  * [`--hisat_build_memory`](#--hisat_build_memory)
+  * [`--subsamp_filesize_thresh`](#--subsamp_filesize_thresh)
   * [`--sampleLevel`](#--samplelevel)
   * [`--plaintext_email`](#--plaintext_email)
   * [`--monochrome_logs`](#--monochrome_logs)
@@ -119,7 +121,7 @@ If `-profile` is not specified at all the pipeline will be run locally and expec
   * Pulls software from dockerhub: [`nfcore/rnaseq`](http://hub.docker.com/r/nfcore/rnaseq/)
 * `singularity`
   * A generic configuration profile to be used with [Singularity](http://singularity.lbl.gov/)
-  * Pulls software from DockerHub
+  * Pulls software from DockerHub: [`nfcore/rnaseq`](http://hub.docker.com/r/nfcore/rnaseq/)
 * `test`
   * A profile with a complete configuration for automated testing
   * Includes links to test data so needs no other parameters
@@ -151,31 +153,31 @@ It is not possible to run a mixture of single-end and paired-end files in one ru
 ### Library strandedness
 Three command line flags / config parameters set the library strandedness for a run:
 
-* `--forward_stranded`
-* `--reverse_stranded`
-* `--unstranded`
+* `--forwardStranded`
+* `--reverseStranded`
+* `--unStranded`
 
-If not set, the pipeline will be run as unstranded. Specifying `--pico` makes the pipeline run in `forward_stranded` mode.
+If not set, the pipeline will be run as unstranded. Specifying `--pico` makes the pipeline run in `forwardStranded` mode.
 
 You can set a default in a cutom Nextflow configuration file such as one saved in `~/.nextflow/config` (see the [nextflow docs](https://www.nextflow.io/docs/latest/config.html) for more). For example:
 
 ```nextflow
 params {
-    reverse_stranded = true
+    reverseStranded = true
 }
 ```
 
-If you have a default strandedness set in your personal config file you can use `--unstranded` to overwrite it for a given run.
+If you have a default strandedness set in your personal config file you can use `--unStranded` to overwrite it for a given run.
 
 These flags affect the commands used for several steps in the pipeline - namely HISAT2, featureCounts, RSeQC (`RPKM_saturation.py`), Qualimap and StringTie:
 
-* `--forward_stranded`
+* `--forwardStranded`
   * HISAT2: `--rna-strandness F` / `--rna-strandness FR`
   * featureCounts: `-s 1`
   * RSeQC: `-d ++,--` / `-d 1++,1--,2+-,2-+`
   * Qualimap: `-pe strand-specific-forward`
   * StringTie: `--fr`
-* `--reverse_stranded`
+* `--reverseStranded`
   * HISAT2: `--rna-strandness R` / `--rna-strandness RF`
   * featureCounts: `-s 2`
   * RSeQC: `-d +-,-+` / `-d 1+-,1-+,2++,2--`
@@ -186,22 +188,27 @@ These flags affect the commands used for several steps in the pipeline - namely 
 
 ### Default Attribute Type
 
-By default, the pipeline uses `gene_name` as the default gene identifier group. In case you need to adjust this, specify using the option `--fcGroupFeatures` to use a different category present in your provided GTF file. Please also take care to use a suitable attribute to categorize the `biotype` of the selected features in your GTF then, using the option `--fcGroupFeaturesType` (default: `gene_biotype`).
+By default, the pipeline uses `gene_name` as the default gene identifier group. In case you need to adjust this, specify using the option `--fc_group_features` to use a different category present in your provided GTF file. Please also take care to use a suitable attribute to categorize the `biotype` of the selected features in your GTF then, using the option `--fc_group_features_type` (default: `gene_biotype`).
 
 ### Extra Gene Names
 By default, the pipeline uses `gene_names` as additional gene identifiers apart from ENSEMBL identifiers in the pipeline.
-This behaviour can be modified by specifying `--fcExtraAttributes` when running the pipeline, which is passed on to featureCounts as an `--extraAttributes` parameter.
+This behaviour can be modified by specifying `--fc_extra_attributes` when running the pipeline, which is passed on to featureCounts as an `--extraAttributes` parameter.
 See the user guide of the [Subread package here](http://bioinf.wehi.edu.au/subread-package/SubreadUsersGuide.pdf).
 Note that you can also specify more than one desired value, separated by a comma:
-``--fcExtraAttributes gene_id,...``
+``--fc_extra_attributes gene_id,...``
 
+## Transcriptome mapping with Salmon
+
+Use the `--pseudo aligner salmon` option to perform additional quantification at the transcript- and gene-level using [Salmon](https://salmon.readthedocs.io/en/latest/salmon.html). This will be run in addition to either STAR or HiSat2 and cannot be run in isolation, mainly because it allows you to obtain QC metrics with respect to the genomic alignments. By default, the pipeline will use the genome fasta and gtf file to generate the transcript fasta file, and then to build the Salmon index. You can override these parameters using the `--transcript_fasta` and `--salmon_index`, respectively.
+
+The default Salmon parameters and a k-mer size of 31 are used to create the index. As [discussed here](https://salmon.readthedocs.io/en/latest/salmon.html#preparing-transcriptome-indices-mapping-based-mode)), a k-mer size off 31 works well with reads that are 75bp or longer.
 
 ## Alignment tool
 By default, the pipeline uses [STAR](https://github.com/alexdobin/STAR) to align the raw FastQ reads to the reference genome. STAR is fast and common, but requires a lot of memory to run, typically around 38GB for the Human GRCh37 reference genome.
 
 If you prefer, you can use [HISAT2](https://ccb.jhu.edu/software/hisat2/index.shtml) as the alignment tool instead. Developed by the same group behind the popular Tophat aligner, HISAT2 has a much smaller memory footprint.
 
-To use HISAT2, use the parameter `--aligner hisat2` or set `params.aligner = 'hisat2'` in your config file.
+To use HISAT2, use the parameter `--aligner hisat2` or set `params.aligner = 'hisat2'` in your config file. Alternatively, you can also use `--aligner salmon` if you want to just perform a fast mapping to the transcriptome with Salmon (you will also have to supply the `--transcriptome` parameter).
 
 ## Reference genomes
 
@@ -282,8 +289,10 @@ Instructs Trim Galore to remove bp from the 5' end of read 2 (paired-end reads o
 Instructs Trim Galore to remove bp from the 3' end of read 1 _AFTER_ adapter/quality trimming has been performed.
 
 ### `--three_prime_clip_r2 [int]`
-Instructs Trim Galore to re move bp from the 3' end of read 2 _AFTER_ adapter/quality trimming has been performed.
+Instructs Trim Galore to remove bp from the 3' end of read 2 _AFTER_ adapter/quality trimming has been performed.
 
+### `--trim_nextseq [int]`
+This enables the option --nextseq-trim=3'CUTOFF within Cutadapt in Trim Galore, which will set a quality cutoff (that is normally given with -q instead), but qualities of G bases are ignored. This trimming is in common for the NextSeq- and NovaSeq-platforms, where basecalls without any signal are called as high-quality G bases.
 
 ## Library Prep Presets
 Some command line options are available to automatically set parameters for common RNA-seq library preparation kits.
@@ -295,22 +304,22 @@ If you have a kit that you'd like a preset added for, please let us know!
 ### `--pico`
 Sets trimming and standedness settings for the _SMARTer Stranded Total RNA-Seq Kit - Pico Input_ kit.
 
-Equivalent to: `--forward_stranded` `--clip_r1 3` `--three_prime_clip_r2 3`
+Equivalent to: `--forwardStranded` `--clip_r1 3` `--three_prime_clip_r2 3`
 
 
 ## Skipping QC steps
 The pipeline contains a large number of quality control steps. Sometimes, it may not be desirable to run all of them if time and compute resources are limited.
 The following options make this easy:
 
-* `--skip_qc` -                Skip **all QC steps**, apart from MultiQC
-* `--skip_fastqc` -            Skip FastQC
-* `--skip_rseqc` -             Skip RSeQC
-* `--skip_qualimap` -          Skip Qualimap
-* `--skip_genebody_coverage` - Skip calculating the genebody coverage
-* `--skip_preseq` -            Skip Preseq
-* `--skip_dupradar` -          Skip dupRadar (and Picard MarkDups)
-* `--skip_edger` -             Skip edgeR MDS plot and heatmap
-* `--skip_multiqc` -           Skip MultiQC
+* `--skipQC` -                Skip **all QC steps**, apart from MultiQC
+* `--skipFastQC` -            Skip FastQC
+* `--skipRseQC` -             Skip RSeQC
+* `--skipQualimap` -          Skip Qualimap
+* `--skipGenebodyCoverage` -  Skip calculating the genebody coverage
+* `--skipPreseq` -            Skip Preseq
+* `--skipDupRadar` -          Skip dupRadar (and Picard MarkDuplicates)
+* `--skipEdgeR` -             Skip edgeR MDS plot and heatmap
+* `--skipMultiQC` -           Skip MultiQC
 
 ## Job resources
 ### Automatic resubmission
@@ -321,7 +330,7 @@ Wherever process-specific requirements are set in the pipeline, the default valu
 
 If you are likely to be running `nf-core` pipelines regularly it may be a good idea to request that your custom config file is uploaded to the `nf-core/configs` git repository. Before you do this please can you test that the config file works with your pipeline of choice using the `-c` parameter (see definition below). You can then create a pull request to the `nf-core/configs` repository with the addition of your config file, associated documentation file (see examples in [`nf-core/configs/docs`](https://github.com/nf-core/configs/tree/master/docs)), and amending [`nfcore_custom.config`](https://github.com/nf-core/configs/blob/master/nfcore_custom.config) to include your custom profile.
 
-If you have any questions or issues please send us a message on [`Slack`](https://nf-core-invite.herokuapp.com/).
+If you have any questions or issues please send us a message on [Slack](https://nf-core-invite.herokuapp.com/).
 
 ## AWS Batch specific parameters
 Running the pipeline on AWS Batch requires a couple of specific parameters to be set according to your AWS Batch configuration. Please use the `-awsbatch` profile and then specify all of the following parameters.
@@ -402,16 +411,16 @@ Should be a string in the format integer-unit. eg. `--max_time '2.h'`
 Use to set a top-limit for the default CPU requirement for each process.
 Should be a string in the format integer-unit. eg. `--max_cpus 1`
 
-### `--hisatBuildMemory`
+### `--hisat_build_memory`
 Required amount of memory in GB to build HISAT2 index with splice sites.
 The HiSAT2 index build can proceed with or without exon / splice junction information.
 To work with this, a very large amount of memory is required.
 If this memory is not available, the index build will proceed without splicing information.
-The `--hisatBuildMemory` option changes this threshold. By default it is `200GB` - if your system
+The `--hisat_build_memory` option changes this threshold. By default it is `200GB` - if your system
 `--max_memory` is set to `128GB` but your genome is small enough to build using this, then you can
-allow the exon build to proceed by supplying `--hisatBuildMemory 100GB`
+allow the exon build to proceed by supplying `--hisat_build_memory 100GB`
 
-### `--subsampFilesizeThreshold`
+### `--subsamp_filesize_thresh`
 This parameter defines the threshold in BAM file size (in bytes) at which data subsampling is used prior to the RSeQC `gene_body_coverage` step. This step is done to speed up and reduce compute resources for the gene body coverage analysis .
 For very large files this means, that the BAM file will be subsampled to compute the `gene_body_coverage`, for small files there will not be a subsampling step.
 By default this parameter is set to `10000000000` - ten gigabytes.
