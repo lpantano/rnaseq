@@ -158,14 +158,15 @@ else if ( params.hisat2_index && params.aligner == 'hisat2' ){
         .fromPath("${params.hisat2_index}*", checkIfExists: true)
         .ifEmpty { exit 1, "HISAT2 index not found: ${params.hisat2_index}" }
 }
-else if ( params.fasta ){
+else {
+    exit 1, "No reference genome files specified!"
+}
+if ( params.fasta ){
     Channel.fromPath(params.fasta, checkIfExists: true)
         .ifEmpty { exit 1, "Genome fasta file not found: ${params.fasta}" }
         .into { ch_fasta_for_star_index; ch_fasta_for_hisat_index; ch_fasta_for_salmon_transcripts }
 }
-else {
-    exit 1, "No reference genome files specified!"
-}
+
 
 if( params.aligner == 'hisat2' && params.splicesites ){
     Channel
@@ -862,11 +863,11 @@ process rseqc {
  * Step 4.1 Subsample the BAM files if necessary
  */
 bam_forSubsamp
-    .filter { it.size() > params.subsampFilesizeThreshold }
-    .map { [it, params.subsampFilesizeThreshold / it.size() ] }
+    .filter { it.size() > params.subsamp_filesize_thresh }
+    .map { [it, params.subsamp_filesize_thresh / it.size() ] }
     .set{ bam_forSubsampFiltered }
 bam_skipSubsamp
-    .filter { it.size() <= params.subsampFilesizeThreshold }
+    .filter { it.size() <= params.subsamp_filesize_thresh }
     .set{ bam_skipSubsampFiltered }
 
 process bam_subsample {
