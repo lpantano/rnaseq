@@ -7,6 +7,8 @@
 [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/)
 [![Docker](https://img.shields.io/docker/automated/nfcore/rnaseq.svg)](https://hub.docker.com/r/nfcore/rnaseq/)
 
+**Difference with nf-core/rnaseq**: we support coldata to create a fully R object that is compatible with our downstream templates.
+
 ### Introduction
 
 **nf-core/rnaseq** is a bioinformatics analysis pipeline used for RNA sequencing data.
