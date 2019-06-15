@@ -56,6 +56,8 @@ def tx2gene(gtf, salmon, gene_id, extra, out):
     with open(out, 'w') as outh:
         for gene in gene_dict:
             for row in gene_dict[gene]:
+                if txid not in row:
+                    continue
                 if (gene, row[txid]) not in seen:
                     seen.add((gene, row[txid]))
                     print("%s,%s,%s" % (row[txid], gene, row[extra]), file=outh)
