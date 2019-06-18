@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 
 args = commandArgs(trailingOnly=TRUE)
-if (length(args) < 6) {
-  stop("Usage: tximeta.r <coldata> <salmon_out> <index> <tximeta> <fasta> <gtf>", call.=FALSE)
+if (length(args) < 2) {
+  stop("Usage: tximeta.r <coldata> <salmon_out>", call.=FALSE)
 }
 
 path = args[2]
@@ -21,6 +21,7 @@ if (info$size == 0){
 fns = list.files(path, pattern = "quant.sf", recursive = T, full.names = T)
 names = basename(dirname(fns))
 names(fns) = names
+
 if (file.exists(coldata)){
     coldata = read.csv(coldata)
     coldata = coldata[match(names, coldata[,1]),]
@@ -30,8 +31,9 @@ if (file.exists(coldata)){
     coldata = data.frame(files = fns, names = names)
 }
 
-
 library(SummarizedExperiment)
+
+# if not genome version is giving
 library(tximport)
 
 txi = tximport(fns, type = "salmon", txOut = TRUE)
@@ -52,7 +54,6 @@ if (!is.null(tx2gene)){
                             colData = DataFrame(coldata),
                             rowData = growdata)
 }
-  
 
 if(exists("gse")){
   saveRDS(gse, file = "gse.rds")

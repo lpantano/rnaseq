@@ -23,6 +23,8 @@ and processes data using the following steps:
 * [dupRadar](#dupradar) - technical / biological read duplication
 * [Preseq](#preseq) - library complexity
 * [featureCounts](#featurecounts) - gene counts, biotype counts, rRNA estimation.
+* [Salmon](#salmon) - gene counts, transcripts counts.
+* [tximport](#tximport) - gene counts, transcripts counts, SummarizedExperimment object.
 * [StringTie](#stringtie) - FPKMs for genes and transcripts
 * [Sample_correlation](#Sample_correlation) - create MDS plot and sample pairwise distance heatmap / dendrogram
 * [MultiQC](#multiqc) - aggregate report, describing results of the whole pipeline
@@ -307,6 +309,83 @@ We also use featureCounts to count overlaps with different classes of features. 
   * Read the counts for each gene provided in the reference `gtf` file
 * `Sample.featureCounts.txt.summary`
   * Summary file, containing statistics about the counts
+
+## Salmon
+[Salmon](https://salmon.readthedocs.io/en/latest/salmon.html) from [Ocean Genomics](https://oceangenomics.com/) quasi-maps and quantifies expression relative to the transcriptome.
+
+**Output directory: `results/salmon`**
+
+* `Sample/quant.sf`
+  * Read counts for the different transcripts.
+* `Sample/quant.genes.sf`
+  * Read the counts for each gene provided in the reference `gtf` file
+* `Sample/logs`
+  * Summary file with information about the process
+
+## tximport
+[tximport](https://bioconductor.org/packages/release/bioc/html/tximport.html) imports transcript-level abundance, estimated counts and transcript lengths, and summarizes into matrices for use with downstream gene-level analysis packages. Average transcript length, weighted by sample-specific transcript abundance estimates, is provided as a matrix which can be used as an offset for different expression of gene-level counts.
+
+**Output directory: `results/salmon`**
+
+* `merged_salmon_tx_tpm.csv`
+  * TPM counts for the different transcripts.
+* `merged_salmon_gene_tpm.csv`
+  * TPM counts for the different genes.
+* `merged_salmon_tx_reads.csv`
+  * estimated counts for the different transcripts.
+* `merged_salmon_gene_reads.csv`
+  * estimated counts for the different genes.
+* `tx2gene.csv`
+  * CSV file with transcript and genes (`params.fc_group_features`) and extra name (`params.fc_extra_attributes`) in each column.
+* `se.rds`
+  * RDS object to be loaded in R that contains a [SummarizedExperiment](https://bioconductor.org/packages/release/bioc/html/SummarizedExperiment.html) with the TPM (`abundance`), estimated counts (`counts`) and transcript length (`length`) in the assays slot for transcripts.
+* `gse.rds`
+  * RDS object to be loaded in R that contains a [SummarizedExperiment](https://bioconductor.org/packages/release/bioc/html/SummarizedExperiment.html) with the TPM (`abundance`), estimated counts (`counts`) and transcript length (`length`) in the assays slot for genes.
+
+
+### Index files
+
+**Output directory: `results/reference_genome/salmon_index`**
+
+* `duplicate_clusters.tsv`
+  * Stores which transcripts are duplicates of one another
+* `hash.bin`
+* `header.json`
+  * Information about k-mer size, uniquely identifying hashes for the reference
+* `indexing.log`
+  * Time log for creating transcriptome index
+* `quasi_index.log`
+  * Step-by-step log for making transcriptome index
+* `refInfo.json`
+  * Information about file used for the reference
+* `rsd.bin`
+* `sa.bin`
+* `txpInfo.bin`
+* `versionInfo.json`
+  * Salmon and indexing version sed to make the index
+
+### Quantification output
+
+**Output directory: `results/salmon`**
+
+* `aux_info/`
+  * Auxiliary info e.g. versions and number of mapped reads
+* `cmd_info.json`
+  * Information about the Salmon quantification command, version, and options
+* `lib_format_counts.json`
+  * Number of fragments assigned, unassigned and incompatible
+* `libParams/`
+  * Contains the file `flenDist.txt` for the fragment length distribution
+* `logs/`
+  * Contains the file `salmon_quant.log` giving a record of Salmon's quantification
+* `quant.sf`
+  * *Transcript*-level quantification of the sample, including gene length, effective length, TPM, and number of reads
+* `quant.genes.sf`
+  * *Gene*-level quantification of the sample, including gene length, effective length, TPM, and number of reads
+* `Sample.transcript.tpm.txt`
+  * Subset of `quant.sf`, only containing the transcript id and TPM values
+* `Sample.gene.tpm.txt`
+  * Subset of `quant.genes.sf`, only containing the gene id and TPM values
 
 ## StringTie
 [StringTie](https://ccb.jhu.edu/software/stringtie/) assembles RNA-Seq alignments into potential transcripts. It assembles and quantitates full-length transcripts representing multiple splice variants for each gene locus.
