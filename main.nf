@@ -1071,9 +1071,9 @@ process featureCounts {
     file biotypes_header from ch_biotypes_header.collect()
 
     output:
-    file "${bam_featurecounts.baseName}_gene.featureCounts.txt" into geneCounts, featureCounts_to_merge
-    file "${bam_featurecounts.baseName}_gene.featureCounts.txt.summary" into featureCounts_logs
-    file "${bam_featurecounts.baseName}_biotype_counts*mqc.{txt,tsv}" into featureCounts_biotype
+    file "${bam_featurecounts.baseName - 'Aligned.sortedByCoord.out' - '.sorted' - '_subsamp'}_gene.featureCounts.txt" into geneCounts, featureCounts_to_merge
+    file "${bam_featurecounts.baseName - 'Aligned.sortedByCoord.out' - '.sorted' - '_subsamp'}_gene.featureCounts.txt.summary" into featureCounts_logs
+    file "${bam_featurecounts.baseName - 'Aligned.sortedByCoord.out' - '.sorted' - '_subsamp'}_biotype_counts*mqc.{txt,tsv}" into featureCounts_biotype
 
     script:
     def featureCounts_direction = 0
@@ -1084,12 +1084,13 @@ process featureCounts {
         featureCounts_direction = 2
     }
     // Try to get real sample name
-    sample_name = bam_featurecounts.baseName - 'Aligned.sortedByCoord.out'
+    sample_name = bam_featurecounts.baseName - 'Aligned.sortedByCoord.out' - '.sorted' - '_subsamp'
     """
-    featureCounts -a $gtf -g ${params.fc_group_features} -o ${bam_featurecounts.baseName}_gene.featureCounts.txt $extraAttributes -p -s $featureCounts_direction $bam_featurecounts
-    featureCounts -a $gtf -g ${params.fc_group_features_type} -o ${bam_featurecounts.baseName}_biotype.featureCounts.txt -p -s $featureCounts_direction $bam_featurecounts
-    cut -f 1,7 ${bam_featurecounts.baseName}_biotype.featureCounts.txt | tail -n +3 | cat $biotypes_header - >> ${bam_featurecounts.baseName}_biotype_counts_mqc.txt
-    mqc_features_stat.py ${bam_featurecounts.baseName}_biotype_counts_mqc.txt -s $sample_name -f rRNA -o ${bam_featurecounts.baseName}_biotype_counts_gs_mqc.tsv
+    ln -s $bam_featurecounts ${sample_name}.bam
+    featureCounts -a $gtf -f ${params.fc_count_features} -g ${params.fc_group_features} -o ${sample_name}_gene.featureCounts.txt $extraAttributes -p -s $featureCounts_direction ${sample_name}.bam
+    featureCounts -a $gtf -g ${params.fc_group_features} -o ${sample_name}_biotype.featureCounts.txt -p -s $featureCounts_direction ${sample_name}.bam
+    cut -f 1,7 ${sample_name}_biotype.featureCounts.txt | tail -n +3 | cat $biotypes_header - >> ${sample_name}_biotype_counts_mqc.txt
+    mqc_features_stat.py ${sample_name}_biotype_counts_mqc.txt -s $sample_name -f rRNA -o ${sample_name}_biotype_counts_gs_mqc.tsv
     """
 }
 
@@ -1097,6 +1098,7 @@ process featureCounts {
  * STEP 10 - Merge featurecounts
  */
 process merge_featureCounts {
+    label "mid_memory"
     tag "${input_files[0].baseName - '.sorted'}"
     publishDir "${params.outdir}/featureCounts", mode: 'copy'
 
@@ -1107,11 +1109,14 @@ process merge_featureCounts {
     file 'merged_gene_counts.txt' into featurecounts_merged
 
     script:
-    //if we only have 1 file, just use cat and pipe output to csvtk. Else join all files first, and then remove unwanted column names.
-    def single = input_files instanceof Path ? 1 : input_files.size()
-    def merge = (single == 1) ? 'cat' : 'csvtk join -t -f "Geneid,Start,Length,End,Chr,Strand,gene_name"'
+    // Redirection (the `<()`) for the win!
+    // Geneid in 1st column and gene_name in 7th
+    gene_ids = "<(tail -n +2 ${input_files[0]} | cut -f1,7 )"
+    counts = input_files.collect{filename ->
+      // Remove first line and take third column
+      "<(tail -n +2 ${filename} | sed 's:.bam::' | cut -f8)"}.join(" ")
     """
-    $merge $input_files | csvtk cut -t -f "-Start,-Chr,-End,-Length,-Strand" | sed 's/Aligned.sortedByCoord.out.markDups.bam//g' > merged_gene_counts.txt
+    paste $gene_ids $counts > merged_gene_counts.txt
     """
 }
 
