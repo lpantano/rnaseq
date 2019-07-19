@@ -1087,7 +1087,7 @@ process featureCounts {
     sample_name = bam_featurecounts.baseName - 'Aligned.sortedByCoord.out' - '.sorted' - '_subsamp'
     """
     ln -s $bam_featurecounts ${sample_name}.bam
-    featureCounts -a $gtf -f ${params.fc_count_features} -g ${params.fc_group_features} -o ${sample_name}_gene.featureCounts.txt $extraAttributes -p -s $featureCounts_direction ${sample_name}.bam
+    featureCounts -a $gtf -t ${params.fc_count_features} -g ${params.fc_group_features} -o ${sample_name}_gene.featureCounts.txt $extraAttributes -p -s $featureCounts_direction ${sample_name}.bam
     featureCounts -a $gtf -g ${params.fc_group_features} -o ${sample_name}_biotype.featureCounts.txt -p -s $featureCounts_direction ${sample_name}.bam
     cut -f 1,7 ${sample_name}_biotype.featureCounts.txt | tail -n +3 | cat $biotypes_header - >> ${sample_name}_biotype_counts_mqc.txt
     mqc_features_stat.py ${sample_name}_biotype_counts_mqc.txt -s $sample_name -f rRNA -o ${sample_name}_biotype_counts_gs_mqc.tsv

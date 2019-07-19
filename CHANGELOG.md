@@ -4,20 +4,30 @@
 
 ### Pipeline updates
 
+* Fix sample names in feature counts and dupRadar to remove suffixes added in other processes
+* Removed `genebody_coverage` process [#195](https://github.com/nf-core/rnaseq/issues/195)
+* Implemented Pearsons correlation instead of euclidean distance [#146](https://github.com/nf-core/rnaseq/issues/146)
+* Add `--stringTieIgnoreGTF` parameter [#206](https://github.com/nf-core/rnaseq/issues/206)
+* Resolved link to guidelines is broken [#203](https://github.com/nf-core/rnaseq/issues/203)
+* Removed unnecessary `stringtie` channels for `MultiQC`
 * Added tximport to merge salmon output
 * Added Salmon as an supplementary method to STAR and HiSAT2
 * Added `--psuedo_aligner`, `--transcript_fasta` and `--salmon_index` parameters
 * Add `Citation` and `Quick Start` section to `README.md`
-* Integrate changes in `nf-core/tools v1.6` template
+* Closed missing multiqc_plots in dev branch output [#200](https://github.com/nf-core/rnaseq/issues/200)
+* Integrate changes in `nf-core/tools v1.6` template which resolved [#90](https://github.com/nf-core/rnaseq/issues/90)
+* Moved process "convertGFFtoGTF" before "makeSTARindex" [#215](https://github.com/nf-core/rnaseq/issues/215)
 * Add tximport and summarizedexperiment dependency [#171](https://github.com/nf-core/rnaseq/issues/171)
 * Change all boolean parameters from snake_case to camelCase and vice versa for value parameters
 * Appointed changes because of missing output of the multiqc_plots folder [#200](https://github.com/nf-core/rnaseq/issues/200)
 * Add Qualimap dependency [#202](https://github.com/nf-core/rnaseq/issues/202)
-* Add Qualimap [#202](https://github.com/nf-core/rnaseq/issues/202)
+* Add SM ReadGroup info for QualiMap compatibility[#238](https://github.com/nf-core/rnaseq/issues/238)
 * Obtain edgeR + dupRadar version information [#198](https://github.com/nf-core/rnaseq/issues/198) and [#112](https://github.com/nf-core/rnaseq/issues/112)
 * Get MultiQC to save plots as [standalone files](https://github.com/nf-core/rnaseq/issues/183)
 * Get MultiQC to save plots as [standalone files](https://github.com/nf-core/rnaseq/issues/183): added the folder "multiqc_plots" to the output.
 * Get MultiQC to write out the software versions in a .csv file [#185](https://github.com/nf-core/rnaseq/issues/185)
+* Add `--gencode` option for compatibility of Salmon and featureCounts biotypes with GENCODE gene annotations
+* Use `file` instead of `new File` to create `pipeline_report.{html,txt}` files, and properly create subfolders
 
 ### Dependency Updates
 
@@ -52,6 +62,7 @@
 * Fixing HISAT2 Index Building for large reference genomes [#153](https://github.com/nf-core/rnaseq/issues/153)
 * Fixing HISAT2 BAM sorting using more memory than available on the system
 * Fixing MarkDuplicates memory consumption issues following [#179](https://github.com/nf-core/rnaseq/pull/179)
+* Use `file` instead of `new File` to create the `pipeline_report.{html,txt}` files to avoid creating local directories when outputting to AWS S3 folders
 
 ### Dependency Updates
 
